@@ -1,0 +1,36 @@
+name: ssh-tunnel
+
+on:
+  workflow_dispatch:
+
+jobs:
+  ssh:
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+    env:
+      SSH_PUBKEY: ${{ secrets.SSH_PUBKEY }}
+    steps:
+      - name: Install packages
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y openssh-server
+          curl -fsSL -o cloudflared.deb https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64.deb
+          sudo dpkg -i cloudflared.deb
+
+      - name: Configure SSH
+        run: |
+          mkdir -p ~/.ssh
+          echo "$SSH_PUBKEY" > ~/.ssh/authorized_keys
+          chmod 700 ~/.ssh
+          chmod 600 ~/.ssh/authorized_keys
+          sudo sed -i 's/^#*PasswordAuthentication.*/PasswordAuthentication no/' /etc/ssh/sshd_config
+          sudo service ssh start
+
+      - name: Start tunnel
+        run: cloudflared tunnel --url ssh://localhost:22 > tunnel.log 2>&1 &
+
+      - name: Print URL and keep alive
+        run: |
+          sleep 10
+          grep -o 'https://[a-z0-9-]*\.trycloudflare\.com' tunnel.log
+          sleep 18000
